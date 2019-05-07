@@ -34,10 +34,6 @@ import (
 	kbapi "github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
 )
 
-func isTerminated(status kbapi.TaskStatus) bool {
-	return status == kbapi.Succeeded || status == kbapi.Failed
-}
-
 // getOrCreateJob will return corresponding Job for pi if it exists, or it will create a Job and return it if
 // pi.Pod.Spec.SchedulerName is same as kube-batch scheduler's name, otherwise it will return nil.
 func (sc *SchedulerCache) getOrCreateJob(pi *kbapi.TaskInfo) *kbapi.JobInfo {
@@ -79,7 +75,7 @@ func (sc *SchedulerCache) addTask(pi *kbapi.TaskInfo) error {
 		}
 
 		node := sc.Nodes[pi.NodeName]
-		if !isTerminated(pi.Status) {
+		if !kbapi.IsTerminated(pi.Status) {
 			return node.AddTask(pi)
 		}
 	}

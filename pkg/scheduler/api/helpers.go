@@ -104,3 +104,7 @@ func JobTerminated(job *JobInfo) bool {
 		job.PDB == nil &&
 		len(job.Tasks) == 0
 }
+
+func IsTerminated(status TaskStatus) bool {
+	return status == Succeeded || status == Failed
+}
