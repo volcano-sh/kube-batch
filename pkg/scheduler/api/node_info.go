@@ -96,8 +96,10 @@ func (ni *NodeInfo) SetNode(node *v1.Node) {
 			ni.Releasing.Add(task.Resreq)
 		}
 
-		ni.Idle.Sub(task.Resreq)
-		ni.Used.Add(task.Resreq)
+		if task.Status != Succeeded {
+			ni.Idle.Sub(task.Resreq)
+			ni.Used.Add(task.Resreq)
+		}
 	}
 }
 
@@ -124,7 +126,9 @@ func (ni *NodeInfo) AddTask(task *TaskInfo) error {
 			ni.Idle.Sub(ti.Resreq)
 		}
 
-		ni.Used.Add(ti.Resreq)
+		if ti.Status != Succeeded {
+			ni.Used.Add(ti.Resreq)
+		}
 	}
 
 	ni.Tasks[key] = ti
