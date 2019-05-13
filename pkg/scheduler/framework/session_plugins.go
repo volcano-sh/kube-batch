@@ -36,6 +36,11 @@ func (ssn *Session) AddTaskOrderFn(name string, cf api.CompareFn) {
 	ssn.taskOrderFns[name] = cf
 }
 
+// AddNamespaceOrderFn add namespace order function
+func (ssn *Session) AddNamespaceOrderFn(name string, cf api.CompareFn) {
+	ssn.namespaceOrderFns[name] = cf
+}
+
 // AddPreemptableFn add preemptable function
 func (ssn *Session) AddPreemptableFn(name string, cf api.EvictableFn) {
 	ssn.preemptableFns[name] = cf
@@ -296,6 +301,51 @@ func (ssn *Session) JobOrderFn(l, r interface{}) bool {
 		return lv.UID < rv.UID
 	}
 	return lv.CreationTimestamp.Before(&rv.CreationTimestamp)
+
+}
+
+// NamespaceOrderEnabled returns the NamespaceOrder is enabled in this session or not
+// judging by length of namespaceOrderFns
+func (ssn *Session) NamespaceOrderEnabled() bool {
+	return len(ssn.namespaceOrderFns) > 0
+}
+
+// NamespaceOrderEnabledInPlugin the NamespaceOrder for this plugin is enabled in this session or not
+func (ssn *Session) NamespaceOrderEnabledInPlugin(pluginName string) bool {
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			if plugin.Name != pluginName {
+				continue
+			}
+			return isEnabled(plugin.EnabledNamespaceOrder)
+		}
+	}
+	return false
+}
+
+// NamespaceOrderFn invoke namespaceorder function of the plugins
+func (ssn *Session) NamespaceOrderFn(l, r interface{}) bool {
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			if !isEnabled(plugin.EnabledNamespaceOrder) {
+				continue
+			}
+			nof, found := ssn.namespaceOrderFns[plugin.Name]
+			if !found {
+				continue
+			}
+			if j := nof(l, r); j != 0 {
+				return j < 0
+			}
+		}
+	}
+
+	// TODO(lminzhw): if all NamespaceOrderFn treat these two namespace as the same,
+	// we should make the job order have its affect among namespaces.
+	// or just schedule namespace one by one
+	lv := l.(string)
+	rv := r.(string)
+	return lv < rv
 
 }
 

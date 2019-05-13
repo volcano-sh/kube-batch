@@ -46,7 +46,14 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 	defer glog.V(3).Infof("Leaving Allocate ...")
 
 	queues := util.NewPriorityQueue(ssn.QueueOrderFn)
+	// map[queueId]PriorityQueue(*api.JobInfo)
 	jobsMap := map[api.QueueID]*util.PriorityQueue{}
+	// map[queueId]PriorityQueue(namespaceName)
+	namespaceMap := map[api.QueueID]*util.PriorityQueue{}
+	// map[queueId]map[namespaceName]PriorityQueue(*api.JobInfo)
+	jobInNamespaceMap := map[api.QueueID]map[string]*util.PriorityQueue{}
+
+	namespaceOrderEnabled := ssn.NamespaceOrderEnabled()
 
 	for _, job := range ssn.Jobs {
 		if job.PodGroup.Status.Phase == v1alpha1.PodGroupPending {
@@ -61,12 +68,37 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 			continue
 		}
 
+		// ignore namespace order enabled or not, just add key in jobsMap
 		if _, found := jobsMap[job.Queue]; !found {
 			jobsMap[job.Queue] = util.NewPriorityQueue(ssn.JobOrderFn)
 		}
 
-		glog.V(4).Infof("Added Job <%s/%s> into Queue <%s>", job.Namespace, job.Name, job.Queue)
-		jobsMap[job.Queue].Push(job)
+		if !namespaceOrderEnabled {
+			glog.V(4).Infof("Added Job <%s/%s> into Queue <%s>", job.Namespace, job.Name, job.Queue)
+			jobsMap[job.Queue].Push(job)
+			continue
+		}
+
+		if _, found := namespaceMap[job.Queue]; !found {
+			namespaceMap[job.Queue] = util.NewPriorityQueue(ssn.NamespaceOrderFn)
+		}
+
+		namespaceJob, found := jobInNamespaceMap[job.Queue]
+		if !found {
+			namespaceJob = make(map[string]*util.PriorityQueue)
+			jobInNamespaceMap[job.Queue] = namespaceJob
+		}
+
+		jobs, found := namespaceJob[job.Namespace]
+		if !found {
+			jobs = util.NewPriorityQueue(ssn.JobOrderFn)
+			namespaceJob[job.Namespace] = jobs
+
+			namespaceMap[job.Queue].Push(job.Namespace)
+		}
+
+		glog.V(4).Infof("Added Job <%s/%s> into Queue <%s> Namespace <%s>", job.Namespace, job.Name, job.Queue, job.Namespace)
+		jobs.Push(job)
 	}
 
 	glog.V(3).Infof("Try to allocate resource to %d Queues", len(jobsMap))
@@ -102,16 +134,44 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 			continue
 		}
 
-		jobs, found := jobsMap[queue.UID]
-
 		glog.V(3).Infof("Try to allocate resource to Jobs in Queue <%v>", queue.Name)
 
-		if !found || jobs.Empty() {
-			glog.V(4).Infof("Can not find jobs for queue %s.", queue.Name)
-			continue
+		var jobQueue *util.PriorityQueue
+		var namespace string
+		var namespaceQueue *util.PriorityQueue
+
+		if !namespaceOrderEnabled {
+			jobs, found := jobsMap[queue.UID]
+			if !found || jobs.Empty() {
+				glog.V(4).Infof("Can not find jobs for queue %s.", queue.Name)
+				continue
+			}
+			jobQueue = jobs
+		} else {
+			namespaces, found := namespaceMap[queue.UID]
+			if !found || namespaces.Empty() {
+				glog.V(4).Infof("Can not find namespace for queue %s.", queue.Name)
+				continue
+			}
+			namespaceQueue = namespaces
+			namespace = namespaces.Pop().(string)
+
+			glog.V(3).Infof("Try to allocate resource to Jobs in Queue <%v>, namespace <%v>", queue.Name, namespace)
+
+			namespacesInQueue, found := jobInNamespaceMap[queue.UID]
+			if !found {
+				glog.V(4).Infof("Can not find namespace %s for queue %s", namespace, queue.Name)
+				continue
+			}
+			namespaceJob, found := namespacesInQueue[namespace]
+			if !found || namespaceJob.Empty() {
+				glog.V(4).Infof("Can not find job for queue %s, namespace %s.", queue.Name, namespace)
+				continue
+			}
+			jobQueue = namespaceJob
 		}
 
-		job := jobs.Pop().(*api.JobInfo)
+		job := jobQueue.Pop().(*api.JobInfo)
 		if _, found := pendingTasks[job.UID]; !found {
 			tasks := util.NewPriorityQueue(ssn.TaskOrderFn)
 			for _, task := range job.TaskStatusIndex[api.Pending] {
@@ -180,11 +240,14 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 			}
 
 			if ssn.JobReady(job) {
-				jobs.Push(job)
+				jobQueue.Push(job)
 				break
 			}
 		}
 
+		if namespaceOrderEnabled {
+			namespaceQueue.Push(namespace)
+		}
 		// Added Queue back until no job in Queue.
 		queues.Push(queue)
 	}

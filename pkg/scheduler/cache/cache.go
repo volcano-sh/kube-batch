@@ -89,6 +89,7 @@ type SchedulerCache struct {
 	pvcInformer      infov1.PersistentVolumeClaimInformer
 	scInformer       storagev1.StorageClassInformer
 	pcInformer       schedv1.PriorityClassInformer
+	quotaInformer    infov1.ResourceQuotaInformer
 
 	Binder        Binder
 	Evictor       Evictor
@@ -103,6 +104,8 @@ type SchedulerCache struct {
 	PriorityClasses      map[string]*v1beta1.PriorityClass
 	defaultPriorityClass *v1beta1.PriorityClass
 	defaultPriority      int32
+
+	NamespaceCollection map[string]*kbapi.NamespaceCollection
 
 	errTasks    workqueue.RateLimitingInterface
 	deletedJobs workqueue.RateLimitingInterface
@@ -196,6 +199,8 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 		kbclient:        kbver.NewForConfigOrDie(config),
 		defaultQueue:    defaultQueue,
 		schedulerName:   schedulerName,
+
+		NamespaceCollection: make(map[string]*kbapi.NamespaceCollection),
 	}
 
 	// Prepare event clients.
@@ -279,6 +284,13 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 		DeleteFunc: sc.DeletePriorityClass,
 	})
 
+	sc.quotaInformer = informerFactory.Core().V1().ResourceQuotas()
+	sc.quotaInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    sc.AddResourceQuota,
+		UpdateFunc: sc.UpdateResourceQuota,
+		DeleteFunc: sc.DeleteResourceQuota,
+	})
+
 	kbinformer := kbinfo.NewSharedInformerFactory(sc.kbclient, 0)
 	// create informer for PodGroup information
 	sc.podGroupInformer = kbinformer.Scheduling().V1alpha1().PodGroups()
@@ -309,6 +321,7 @@ func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
 	go sc.pvcInformer.Informer().Run(stopCh)
 	go sc.scInformer.Informer().Run(stopCh)
 	go sc.queueInformer.Informer().Run(stopCh)
+	go sc.quotaInformer.Informer().Run(stopCh)
 
 	if options.ServerOpts.EnablePriorityClass {
 		go sc.pcInformer.Informer().Run(stopCh)
@@ -335,6 +348,7 @@ func (sc *SchedulerCache) WaitForCacheSync(stopCh <-chan struct{}) bool {
 				sc.pvcInformer.Informer().HasSynced,
 				sc.scInformer.Informer().HasSynced,
 				sc.queueInformer.Informer().HasSynced,
+				sc.quotaInformer.Informer().HasSynced,
 			}
 			if options.ServerOpts.EnablePriorityClass {
 				informerSynced = append(informerSynced, sc.pcInformer.Informer().HasSynced)
@@ -539,9 +553,10 @@ func (sc *SchedulerCache) Snapshot() *kbapi.ClusterInfo {
 	defer sc.Mutex.Unlock()
 
 	snapshot := &kbapi.ClusterInfo{
-		Nodes:  make(map[string]*kbapi.NodeInfo),
-		Jobs:   make(map[kbapi.JobID]*kbapi.JobInfo),
-		Queues: make(map[kbapi.QueueID]*kbapi.QueueInfo),
+		Nodes:         make(map[string]*kbapi.NodeInfo),
+		Jobs:          make(map[kbapi.JobID]*kbapi.JobInfo),
+		Queues:        make(map[kbapi.QueueID]*kbapi.QueueInfo),
+		NamespaceInfo: make(map[string]*kbapi.NamespaceInfo),
 	}
 
 	for _, value := range sc.Nodes {
@@ -550,6 +565,13 @@ func (sc *SchedulerCache) Snapshot() *kbapi.ClusterInfo {
 
 	for _, value := range sc.Queues {
 		snapshot.Queues[value.UID] = value.Clone()
+	}
+
+	for _, value := range sc.NamespaceCollection {
+		info := value.Snapshot()
+		snapshot.NamespaceInfo[value.Name] = info
+		glog.V(4).Infof("Namespace %s has weight %v",
+			value.Name, info.GetWeight())
 	}
 
 	for _, value := range sc.Jobs {
