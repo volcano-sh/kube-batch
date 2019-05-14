@@ -118,6 +118,9 @@ func (enqueue *enqueueAction) Execute(ssn *framework.Session) {
 		if inqueue {
 			job.PodGroup.Status.Phase = v1alpha1.PodGroupInqueue
 			ssn.Jobs[job.UID] = job
+		} else {
+			glog.V(3).Infof(
+				"Job <%s/%s> skipped due to resource not enough.", job.Namespace, job.Name)
 		}
 
 		// Added Queue back until no job in Queue.
