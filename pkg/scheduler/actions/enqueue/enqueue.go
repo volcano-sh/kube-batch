@@ -120,7 +120,7 @@ func (enqueue *enqueueAction) Execute(ssn *framework.Session) {
 			ssn.Jobs[job.UID] = job
 		} else {
 			glog.V(3).Infof(
-				"Job <%s/%s> skipped due to resource not enough.", job.Namespace, job.Name)
+				"Skip job <%s/%s> because not enough resource.", job.Namespace, job.Name)
 		}
 
 		// Added Queue back until no job in Queue.
