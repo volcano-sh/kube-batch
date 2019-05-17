@@ -27,9 +27,9 @@ import (
 )
 
 func init() {
-	framework.RegisterAction(reclaim.New())
-	framework.RegisterAction(allocate.New())
-	framework.RegisterAction(backfill.New())
-	framework.RegisterAction(preempt.New())
-	framework.RegisterAction(enqueue.New())
+	framework.RegisterAction("reclaim", reclaim.New)
+	framework.RegisterAction("allocate", allocate.New)
+	framework.RegisterAction("backfill", backfill.New)
+	framework.RegisterAction("preempt", preempt.New)
+	framework.RegisterAction("enqueue", enqueue.New)
 }

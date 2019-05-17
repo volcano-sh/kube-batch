@@ -22,7 +22,9 @@ scenario on the fly.
 The following YAML format will be introduced for dynamic plugin configuration:
 
 ```yaml
-actions: "list_of_action_in_order"
+actions: 
+- name: action_1
+- name: action_2
 tiers:
 - plugins:
   - name: "plugin_1"
@@ -48,13 +50,18 @@ specific, `true` is default value. For now, `preemptable`, `jobOrder`, `taskOrde
 
 Takes following example as demonstration:
 
-1. The actions `"reclaim, allocate, backfill, preempt"` will be executed in order by `kube-batch`
+1. The actions `"enqueue","reclaim", "allocate", "backfill", "preempt"` will be executed in order by `kube-batch`
 1. `"priority"` has higher priority than `"gang, drf, predicates, proportion"`; a job with higher priority
 will preempt other jobs, although it's already allocated "enough" resource according to `"drf"`
 1. `"tiers.plugins.drf.disableTaskOrder"` is `true`, so `drf` will not impact task order phase/action
 
 ```yaml
-actions: "reclaim, allocate, backfill, preempt"
+actions: 
+- name: enqueue
+- name: reclaim
+- name: allocate
+- name: backfill
+- name: preempt
 tiers:
 - plugins:
   - name: "priority"

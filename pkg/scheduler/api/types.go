@@ -150,3 +150,6 @@ type NodeOrderMapFn func(*TaskInfo, *NodeInfo) (map[string]float64, float64, err
 
 // NodeOrderReduceFn is the func declaration used to reduce priority score of all nodes for a plugiin for a particular task.
 type NodeOrderReduceFn func(*TaskInfo, map[string]schedulerapi.HostPriorityList) (map[string]float64, error)
+
+// BackFillAbleFn is the func declaration used to judge is resources of a task can be backFilled by another task
+type BackFillAbleFn func(*TaskInfo, *TaskInfo) bool

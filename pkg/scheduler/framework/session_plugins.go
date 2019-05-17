@@ -96,6 +96,16 @@ func (ssn *Session) AddJobEnqueueableFn(name string, fn api.ValidateFn) {
 	ssn.jobEnqueueableFns[name] = fn
 }
 
+// AddBackFillEligibleFn add backFillEligible function
+func (ssn *Session) AddBackFillEligibleFn(name string, fn api.ValidateFn) {
+	ssn.backFillEligibleFns[name] = fn
+}
+
+// AddBackFillAbleFn add canBeBackFilled function
+func (ssn *Session) AddBackFillAbleFn(name string, fn api.BackFillAbleFn) {
+	ssn.backFillAbleFns[name] = fn
+}
+
 // Reclaimable invoke reclaimable function of the plugins
 func (ssn *Session) Reclaimable(reclaimer *api.TaskInfo, reclaimees []*api.TaskInfo) []*api.TaskInfo {
 	var victims []*api.TaskInfo
@@ -489,4 +499,48 @@ func (ssn *Session) NodeOrderReduceFn(task *api.TaskInfo, pluginNodeScoreMap map
 		}
 	}
 	return nodeScoreMap, nil
+}
+
+// JobEligibleToBackFillOthers return whether job can backFill resources of other jobs
+func (ssn *Session) JobEligibleToBackFillOthers(obj interface{}) bool {
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			if !isEnabled(plugin.EnabledJobBackFill) {
+				continue
+			}
+
+			jrf, found := ssn.backFillEligibleFns[plugin.Name]
+			if !found {
+				continue
+			}
+
+			if !jrf(obj) {
+				return false
+			}
+		}
+	}
+
+	return true
+}
+
+// CanBeBackFilled return whether task can be backFilled by other pods
+func (ssn *Session) CanBeBackFilled(taskRobber *api.TaskInfo, potentialVictim *api.TaskInfo) bool {
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			if !isEnabled(plugin.EnabledTaskBackFilled) {
+				continue
+			}
+
+			jrf, found := ssn.backFillAbleFns[plugin.Name]
+			if !found {
+				continue
+			}
+
+			if jrf(taskRobber, potentialVictim) {
+				return true
+			}
+		}
+	}
+
+	return false
 }

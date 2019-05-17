@@ -49,4 +49,10 @@ func ApplyPluginConfDefaults(option *conf.PluginOption) {
 	if option.EnabledNodeOrder == nil {
 		option.EnabledNodeOrder = &t
 	}
+	if option.EnabledJobBackFill == nil {
+		option.EnabledJobBackFill = &t
+	}
+	if option.EnabledTaskBackFilled == nil {
+		option.EnabledTaskBackFilled = &t
+	}
 }

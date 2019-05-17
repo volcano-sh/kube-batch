@@ -127,6 +127,48 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 		ji := obj.(*api.JobInfo)
 		return ji.Pipelined()
 	})
+
+	ssn.AddBackFillEligibleFn(gp.Name(), func(obj interface{}) bool {
+		ji := obj.(*api.JobInfo)
+
+		return len(ji.TaskStatusIndex[api.Pending]) > 0
+	})
+
+	// robberTask is task who try to backFill resource of other task.
+	// taskVictim is task whose resources may be backFilled by other task
+	// Do not backFill resources of tasks under job of robberTask.
+	// Only task with allocated status can be backFilled.
+	// Only resources under the queue of robber task can be backFilled.
+	// If job is ready, its' task can not be backFilled.
+	ssn.AddBackFillAbleFn(gp.Name(), func(taskRobber *api.TaskInfo, taskVictim *api.TaskInfo) bool {
+		jobVictim, found := ssn.Jobs[taskVictim.Job]
+		if !found {
+			return false
+		}
+
+		jobRobber, found := ssn.Jobs[taskRobber.Job]
+		if !found {
+			return false
+		}
+
+		if jobVictim == jobRobber {
+			return false
+		}
+
+		if taskVictim.Status != api.Allocated {
+			return false
+		}
+
+		if jobVictim.Queue != jobRobber.Queue {
+			return false
+		}
+
+		if jobVictim.Ready() {
+			return false
+		}
+
+		return true
+	})
 }
 
 func (gp *gangPlugin) OnSessionClose(ssn *framework.Session) {

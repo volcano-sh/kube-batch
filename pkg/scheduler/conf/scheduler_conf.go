@@ -16,12 +16,23 @@ limitations under the License.
 
 package conf
 
+// EnableBackFillNonBestEffortPods defines weather enable backFill non-BestEffort pods
+const EnableBackFillNonBestEffortPods = "enableBackFillNonBestEffortPods"
+
 // SchedulerConfiguration defines the configuration of scheduler.
 type SchedulerConfiguration struct {
 	// Actions defines the actions list of scheduler in order
-	Actions string `yaml:"actions"`
+	Actions []Action `yaml:"actions"`
 	// Tiers defines plugins in different tiers
 	Tiers []Tier `yaml:"tiers"`
+}
+
+// Action describes a struct of an action resource
+type Action struct {
+	// Identifier of the action
+	Name string `yaml:"name"`
+	// Argument holds the parameters to configure the given action
+	Arguments map[string]string `yaml:"arguments"`
 }
 
 // Tier defines plugin tier
@@ -51,6 +62,10 @@ type PluginOption struct {
 	EnabledPredicate *bool `yaml:"enablePredicate"`
 	// EnabledNodeOrder defines whether NodeOrderFn is enabled
 	EnabledNodeOrder *bool `yaml:"enableNodeOrder"`
+	// EnabledJobBackFill defines whether JobBackFillEligible enabled
+	EnabledJobBackFill *bool `yaml:"enableJobBackFill"`
+	// EnabledTaskBackFilled defines whether TaskCanBeBackFilled enabled
+	EnabledTaskBackFilled *bool `yaml:"enableTaskBackFilled"`
 	// Arguments defines the different arguments that can be given to different plugins
 	Arguments map[string]string `yaml:"arguments"`
 }

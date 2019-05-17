@@ -302,10 +302,84 @@ func (s *Statement) unallocate(task *api.TaskInfo, reason string) error {
 			})
 		}
 	}
+
 	return nil
 }
 
-// Discard operation for evict, pipeline and allocate
+// BackFill pre-remove task from node
+func (s *Statement) BackFill(task *api.TaskInfo) error {
+	job, found := s.ssn.Jobs[task.Job]
+	if !found {
+		return fmt.Errorf("Failed to found Job <%s> in session <%s> index when try to backFill task <%s:%s>",
+			task.Job, s.ssn.UID, task.Namespace, task.Name)
+	}
+
+	if err := job.UpdateTaskStatus(task, api.Pending); err != nil {
+		return fmt.Errorf("Failed to update task <%s/%s> status to %s in session <%s> when try to backFill it for: %v",
+			task.Namespace, task.Name, api.Pending, s.ssn.UID, err)
+	}
+
+	node, foundNode := s.ssn.Nodes[task.NodeName]
+	if !foundNode {
+		return fmt.Errorf("Failed to found Node <%s> in session <%s> index when try to backFill task <%s:%s>",
+			task.NodeName, s.ssn.UID, task.Namespace, task.Name)
+	}
+
+	if err := node.RemoveTask(task); err != nil {
+		return fmt.Errorf("Failed to backFill task <%s/%s> from node <%s> in session <%s> for: %v",
+			task.Namespace, task.Name, task.NodeName, s.ssn.UID, err)
+	}
+
+	s.operations = append(s.operations, operation{
+		name: "backFill",
+		args: []interface{}{task},
+	})
+
+	return nil
+}
+
+func (s *Statement) backFill(task *api.TaskInfo) error {
+	for _, eh := range s.ssn.eventHandlers {
+		if eh.DeallocateFunc != nil {
+			eh.DeallocateFunc(&Event{
+				Task: task,
+			})
+		}
+	}
+	return nil
+}
+
+func (s *Statement) deBackFill(task *api.TaskInfo) error {
+	job, found := s.ssn.Jobs[task.Job]
+	if !found {
+		glog.Errorf("Failed to found Job <%s> in session <%s> index when deBackFilling task <%s:%s>",
+			task.Job, s.ssn.UID, task.Namespace, task.Name)
+		return nil
+	}
+
+	if err := job.UpdateTaskStatus(task, api.Allocated); err != nil {
+		glog.Errorf("Failed to update task <%s/%s> status to %s in session <%s> when deBackFilling it for: %v",
+			task.Namespace, task.Name, api.Pending, s.ssn.UID, err)
+		return err
+	}
+
+	node, foundNode := s.ssn.Nodes[task.NodeName]
+	if !foundNode {
+		glog.Errorf("Failed to found Node <%s> in session <%s> index when deBackFilling task <%s:%s> from it",
+			task.NodeName, s.ssn.UID, task.Namespace, task.Name)
+		return nil
+	}
+
+	if err := node.AddTask(task); err != nil {
+		glog.Errorf("Failed to add task <%s/%s> to node <%s> in session <%s> for: %v",
+			task.Namespace, task.Name, task.NodeName, s.ssn.UID, err)
+		return err
+	}
+
+	return nil
+}
+
+// Discard operation for evict and pipeline
 func (s *Statement) Discard() {
 	glog.V(3).Info("Discarding operations ...")
 	for i := len(s.operations) - 1; i >= 0; i-- {
@@ -317,6 +391,8 @@ func (s *Statement) Discard() {
 			s.unpipeline(op.args[0].(*api.TaskInfo))
 		case "allocate":
 			s.unallocate(op.args[0].(*api.TaskInfo), op.args[1].(string))
+		case "backFill":
+			s.deBackFill(op.args[0].(*api.TaskInfo))
 		}
 	}
 }
@@ -332,6 +408,8 @@ func (s *Statement) Commit() {
 			s.pipeline(op.args[0].(*api.TaskInfo))
 		case "allocate":
 			s.allocate(op.args[0].(*api.TaskInfo), op.args[1].(string))
+		case "backFill":
+			s.backFill(op.args[0].(*api.TaskInfo))
 		}
 	}
 }

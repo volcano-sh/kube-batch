@@ -98,7 +98,12 @@ func calculateWeight(args framework.Arguments) priorityWeight {
 	   User Should give priorityWeight in this format(nodeaffinity.weight, podaffinity.weight, leastrequested.weight, balancedresource.weight).
 	   Currently supported only for nodeaffinity, podaffinity, leastrequested, balancedresouce priorities.
 
-	   actions: "reclaim, allocate, backfill, preempt"
+	   actions:
+	   - name: enqueue
+	   - name: reclaim
+	   - name: allocate
+	   - name: backfill
+	   - name: preempt
 	   tiers:
 	   - plugins:
 	     - name: priority

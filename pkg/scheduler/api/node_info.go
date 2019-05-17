@@ -133,6 +133,29 @@ func (ni *NodeInfo) setNodeState(node *v1.Node) {
 	}
 }
 
+// Snapshot used to Snapshot nodeInfo Object
+func (ni *NodeInfo) Snapshot() *NodeInfo {
+	res := NewNodeInfo(ni.Node)
+
+	res.Releasing = ni.Releasing.Clone()
+	res.Idle = ni.Idle.Clone()
+	res.Allocatable = ni.Allocatable.Clone()
+	res.Used = ni.Used.Clone()
+	res.Capability = ni.Capability.Clone()
+
+	for _, p := range ni.Tasks {
+		key := PodKey(p.Pod)
+		if _, found := res.Tasks[key]; found {
+			continue
+		}
+
+		res.Tasks[key] = p.Clone()
+	}
+
+	res.Others = ni.Others
+	return res
+}
+
 // SetNode sets kubernetes node object to nodeInfo object
 func (ni *NodeInfo) SetNode(node *v1.Node) {
 	ni.setNodeState(node)

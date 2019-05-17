@@ -135,3 +135,50 @@ func TestNodeInfo_RemovePod(t *testing.T) {
 		}
 	}
 }
+
+func TestNodeSnapshot(t *testing.T) {
+	n1 := buildNode("n1", buildResourceList("8000m", "10G"))
+	p1 := buildPod("cm1", "p1", "n1", v1.PodRunning, buildResourceList("1000m", "1G"), []metav1.OwnerReference{}, make(map[string]string))
+	p2 := buildPod("cm1", "p2", "n1", v1.PodRunning, buildResourceList("2000m", "2G"), []metav1.OwnerReference{}, make(map[string]string))
+
+	tests := []struct {
+		name     string
+		node     *v1.Node
+		pods     []*v1.Pod
+		expected *NodeInfo
+	}{
+		{
+			name: "Snapshot function test",
+			node: n1,
+			pods: []*v1.Pod{p1, p2},
+			expected: &NodeInfo{
+				Name:        "n1",
+				Node:        n1,
+				Idle:        buildResource("5000m", "7G"),
+				Used:        buildResource("3000m", "3G"),
+				Releasing:   EmptyResource(),
+				Allocatable: buildResource("8000m", "10G"),
+				Capability:  buildResource("8000m", "10G"),
+				Tasks: map[TaskID]*TaskInfo{
+					"cm1/p1": NewTaskInfo(p1),
+					"cm1/p2": NewTaskInfo(p2),
+				},
+			},
+		},
+	}
+
+	for i, test := range tests {
+		ni := NewNodeInfo(test.node)
+
+		for _, pod := range test.pods {
+			pi := NewTaskInfo(pod)
+			ni.AddTask(pi)
+		}
+
+		niCopy := ni.Snapshot()
+		if !nodeInfoEqual(ni, niCopy) {
+			t.Errorf("node info %d: \n expected %v, \n got %v \n",
+				i, test.expected, niCopy)
+		}
+	}
+}
