@@ -47,17 +47,6 @@ func (sc *SchedulerCache) getOrCreateJob(pi *kbapi.TaskInfo) *kbapi.JobInfo {
 				pi.Pod.Namespace, pi.Pod.Name, sc.schedulerName)
 			return nil
 		}
-		pb := createShadowPodGroup(pi.Pod)
-		pi.Job = kbapi.JobID(pb.Name)
-
-		if _, found := sc.Jobs[pi.Job]; !found {
-			job := kbapi.NewJobInfo(pi.Job)
-			job.SetPodGroup(pb)
-			// Set default queue for shadow podgroup.
-			job.Queue = kbapi.QueueID(sc.defaultQueue)
-
-			sc.Jobs[pi.Job] = job
-		}
 	} else {
 		if _, found := sc.Jobs[pi.Job]; !found {
 			sc.Jobs[pi.Job] = kbapi.NewJobInfo(pi.Job)
