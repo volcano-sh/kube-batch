@@ -40,6 +40,8 @@ const (
 	LeastRequestedWeight = "leastrequested.weight"
 	// BalancedResourceWeight is the key for providing Balanced Resource Priority Weight in YAML
 	BalancedResourceWeight = "balancedresource.weight"
+	// TaintTolerationWeight is the key for providing taint toleration Priority Weight in YAML
+	TaintTolerationWeight = "taintToleration.weight"
 )
 
 type nodeOrderPlugin struct {
@@ -104,12 +106,13 @@ type priorityWeight struct {
 	nodeAffinityWeight      int
 	podAffinityWeight       int
 	balancedRescourceWeight int
+	taintTolerationWeight   int
 }
 
 func calculateWeight(args framework.Arguments) priorityWeight {
 	/*
 	   User Should give priorityWeight in this format(nodeaffinity.weight, podaffinity.weight, leastrequested.weight, balancedresource.weight).
-	   Currently supported only for nodeaffinity, podaffinity, leastrequested, balancedresouce priorities.
+	   Currently supported only for nodeaffinity, podaffinity, leastrequested, balancedresouce, taintToleration priorities.
 
 	   actions: "reclaim, allocate, backfill, preempt"
 	   tiers:
@@ -127,6 +130,7 @@ func calculateWeight(args framework.Arguments) priorityWeight {
 	         podaffinity.weight: 2
 	         leastrequested.weight: 2
 	         balancedresource.weight: 2
+	         taintToleration.weight: 2
 	*/
 
 	// Values are initialized to 1.
@@ -135,6 +139,7 @@ func calculateWeight(args framework.Arguments) priorityWeight {
 		nodeAffinityWeight:      1,
 		podAffinityWeight:       1,
 		balancedRescourceWeight: 1,
+		taintTolerationWeight:   1,
 	}
 
 	// Checks whether nodeaffinity.weight is provided or not, if given, modifies the value in weight struct.
@@ -148,6 +153,9 @@ func calculateWeight(args framework.Arguments) priorityWeight {
 
 	// Checks whether balancedresource.weight is provided or not, if given, modifies the value in weight struct.
 	args.GetInt(&weight.balancedRescourceWeight, BalancedResourceWeight)
+
+	// Checks whether taintToleration.weight is provided or not, if given, modifies the value in weight struct.
+	args.GetInt(&weight.taintTolerationWeight, TaintTolerationWeight)
 
 	return weight
 }
@@ -198,14 +206,6 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 		// If balancedRescourceWeight in provided, host.Score is multiplied with weight, if not, host.Score is added to total score.
 		score = score + float64(host.Score*weight.balancedRescourceWeight)
 
-		host, err = priorities.CalculateNodeAffinityPriorityMap(task.Pod, nil, nodeInfo)
-		if err != nil {
-			glog.Warningf("Calculate Node Affinity Priority Failed because of Error: %v", err)
-			return 0, err
-		}
-		// If nodeAffinityWeight in provided, host.Score is multiplied with weight, if not, host.Score is added to total score.
-		score = score + float64(host.Score*weight.nodeAffinityWeight)
-
 		mapFn := priorities.NewInterPodAffinityPriority(cn, nl, pl, v1.DefaultHardPodAffinitySymmetricWeight)
 		interPodAffinityScore, err = mapFn(task.Pod, nodeMap, nodeSlice)
 		if err != nil {
@@ -220,6 +220,70 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 		return score, nil
 	}
 	ssn.AddNodeOrderFn(pp.Name(), nodeOrderFn)
+
+	if weight.nodeAffinityWeight >0 {
+		nodeMapFn := func(task *api.TaskInfo, node *api.NodeInfo) (float64, error) {
+			nodeInfo := schedulercache.NewNodeInfo(node.Pods()...)
+			nodeInfo.SetNode(node.Node)
+
+			var score = 0.0
+			host, err := priorities.CalculateNodeAffinityPriorityMap(task.Pod, nil, nodeInfo)
+			if err != nil {
+				glog.Warningf("Node Affinity Priority failed because of Error: %v", err)
+				return score, err
+			}
+			score = float64(host.Score)
+
+			glog.V(4).Infof("Total Score for that node is: %f", score)
+			return score, nil
+		}
+
+		ssn.AddNodeMapFn("nodeaffinity", nodeMapFn)
+
+		nodeReduceFn := func(task *api.TaskInfo, result schedulerapi.HostPriorityList) error {
+			if err := priorities.CalculateNodeAffinityPriorityReduce(task.Pod, nil, nil, result); err != nil {
+				return err
+			}
+			for i, hp := range result {
+				result[i].Score = hp.Score * weight.nodeAffinityWeight
+			}
+			return nil
+		}
+
+		ssn.AddNodeReduceFn("nodeaffinity", nodeReduceFn)
+	}
+
+	if weight.taintTolerationWeight >0 {
+		nodeMapFn := func(task *api.TaskInfo, node *api.NodeInfo) (float64, error) {
+			nodeInfo := schedulercache.NewNodeInfo(node.Pods()...)
+			nodeInfo.SetNode(node.Node)
+
+			var score = 0.0
+			host, err := priorities.ComputeTaintTolerationPriorityMap(task.Pod, nil, nodeInfo)
+			if err != nil {
+				glog.Warningf("Taint Toleration Priority failed because of Error: %v", err)
+				return score, err
+			}
+			score = float64(host.Score)
+
+			glog.V(4).Infof("Total Score for that node is: %f", score)
+			return score, nil
+		}
+
+		ssn.AddNodeMapFn("tainttoleration", nodeMapFn)
+
+		nodeReduceFn := func(task *api.TaskInfo, result schedulerapi.HostPriorityList) error {
+			if err := priorities.ComputeTaintTolerationPriorityReduce(task.Pod, nil, nil, result); err != nil {
+				return err
+			}
+			for i, hp := range result {
+				result[i].Score = hp.Score * weight.taintTolerationWeight
+			}
+			return nil
+		}
+
+		ssn.AddNodeReduceFn("tainttoleration", nodeReduceFn)
+	}
 }
 
 func (pp *nodeOrderPlugin) OnSessionClose(ssn *framework.Session) {

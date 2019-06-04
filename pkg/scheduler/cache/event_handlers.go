@@ -268,10 +268,21 @@ func (sc *SchedulerCache) addNode(node *v1.Node) error {
 	return nil
 }
 
+func isNodeAllocatableSufficient(info *kbapi.NodeInfo, newNode *v1.Node) bool {
+	newIdle := kbapi.NewResource(newNode.Status.Allocatable)
+	if info.Used.LessEqual(newIdle) {
+		return true
+	}
+	glog.V(4).Infof("node %s allocatable is not sufficient: %v", newNode.Name, newNode.Status.Allocatable)
+	return false
+}
+
 // Assumes that lock is already acquired.
 func (sc *SchedulerCache) updateNode(oldNode, newNode *v1.Node) error {
 	if sc.Nodes[newNode.Name] != nil {
-		sc.Nodes[newNode.Name].SetNode(newNode)
+		if isNodeAllocatableSufficient(sc.Nodes[newNode.Name], newNode) {
+			sc.Nodes[newNode.Name].SetNode(newNode)
+		}
 		return nil
 	}
 
