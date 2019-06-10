@@ -161,10 +161,9 @@ func calculateWeight(args framework.Arguments) priorityWeight {
 }
 
 func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
+	weight := calculateWeight(pp.pluginArguments)
+
 	nodeOrderFn := func(task *api.TaskInfo, node *api.NodeInfo) (float64, error) {
-
-		weight := calculateWeight(pp.pluginArguments)
-
 		pl := &util.PodLister{
 			Session: ssn,
 		}
@@ -221,9 +220,9 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 	}
 	ssn.AddNodeOrderFn(pp.Name(), nodeOrderFn)
 
-	if weight.nodeAffinityWeight >0 {
+	if weight.nodeAffinityWeight > 0 {
 		nodeMapFn := func(task *api.TaskInfo, node *api.NodeInfo) (float64, error) {
-			nodeInfo := schedulercache.NewNodeInfo(node.Pods()...)
+			nodeInfo := cache.NewNodeInfo(node.Pods()...)
 			nodeInfo.SetNode(node.Node)
 
 			var score = 0.0
@@ -253,9 +252,9 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 		ssn.AddNodeReduceFn("nodeaffinity", nodeReduceFn)
 	}
 
-	if weight.taintTolerationWeight >0 {
+	if weight.taintTolerationWeight > 0 {
 		nodeMapFn := func(task *api.TaskInfo, node *api.NodeInfo) (float64, error) {
-			nodeInfo := schedulercache.NewNodeInfo(node.Pods()...)
+			nodeInfo := cache.NewNodeInfo(node.Pods()...)
 			nodeInfo.SetNode(node.Node)
 
 			var score = 0.0
