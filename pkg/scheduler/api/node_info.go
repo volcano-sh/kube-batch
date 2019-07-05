@@ -161,6 +161,19 @@ func (ni *NodeInfo) SetNode(node *v1.Node) {
 	}
 }
 
+func (ni *NodeInfo) updateIdleRes(ti *TaskInfo) bool {
+	if !ti.Resreq.Less(ni.Idle) {
+		ni.State = NodeState{
+			Phase:  NotReady,
+			Reason: "OutOfSync",
+		}
+		return false
+	} else {
+		ni.Idle.Sub(ti.Resreq)
+		return true
+	}
+}
+
 // AddTask is used to add a task in nodeInfo object
 func (ni *NodeInfo) AddTask(task *TaskInfo) error {
 	key := PodKey(task.Pod)
@@ -177,11 +190,15 @@ func (ni *NodeInfo) AddTask(task *TaskInfo) error {
 		switch ti.Status {
 		case Releasing:
 			ni.Releasing.Add(ti.Resreq)
-			ni.Idle.Sub(ti.Resreq)
+			if !ni.updateIdleRes(ti) {
+				return fmt.Errorf("Selected node NotReady")
+			}
 		case Pipelined:
 			ni.Releasing.Sub(ti.Resreq)
 		default:
-			ni.Idle.Sub(ti.Resreq)
+			if !ni.updateIdleRes(ti) {
+				return fmt.Errorf("Selected node NotReady")
+			}
 		}
 
 		ni.Used.Add(ti.Resreq)
