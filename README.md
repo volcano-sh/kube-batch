@@ -1,4 +1,8 @@
-# Scheduler
+# All codes were migrated to [volcano-sh/volcano](https://github.com/volcano-sh/volcano/)!
+
+-------------------------------
+
+## Scheduler
 
 [![Build Status](https://travis-ci.org/volcano-sh/scheduler.svg?branch=master)](https://travis-ci.org/volcano-sh/scheduler)
 [![Go Report Card](https://goreportcard.com/badge/github.com/volcano-sh/volcano)](https://goreportcard.com/report/github.com/volcano-sh/volcano)
